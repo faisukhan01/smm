@@ -1,0 +1,13 @@
+{
+  "name": "@smm/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "bunx swc src -d dist"
+  },
+  "dependencies": {
+    "zod": "^4.0.2"
+  }
+}

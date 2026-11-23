@@ -1,0 +1,16 @@
+{
+  "name": "@smm/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun --hot --env-file=../../.env src/main.ts",
+    "start": "bun --env-file=../../.env src/main.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.11.1",
+    "@smm/shared": "workspace:*",
+    "bullmq": "^5.58.5",
+    "ioredis": "^5.8.2"
+  }
+}

@@ -1,0 +1,520 @@
+// SMM — AI Social Media Manager
+// Production schema (Neon PostgreSQL / Prisma 6)
+// Multi-tenant: every domain row is scoped to a Workspace.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MANAGER
+  EDITOR
+  VIEWER
+}
+
+enum MemberStatus {
+  ACTIVE
+  PENDING
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum Platform {
+  FACEBOOK
+  INSTAGRAM
+  PINTEREST
+}
+
+enum AccountStatus {
+  CONNECTED
+  EXPIRED
+  REVOKED
+  ERROR
+}
+
+enum PostStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+enum PostOrigin {
+  MANUAL
+  AI
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum MediaProvider {
+  GENERATED
+  UPLOADED
+}
+
+enum AiKind {
+  CAPTION
+  HASHTAGS
+  IMAGE
+  ASSISTANT
+  PLAN
+  REPLY_DRAFT
+}
+
+enum AiMode {
+  MANUAL
+  APPROVAL
+  AUTO
+}
+
+enum ConversationStatus {
+  OPEN
+  RESOLVED
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+enum PlanTier {
+  FREE
+  STARTER
+  PROFESSIONAL
+  AGENCY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PENDING
+  CANCELED
+}
+
+// ---------------------------------------------------------------------------
+// Identity & Tenancy
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  passwordHash  String
+  emailVerified Boolean  @default(false)
+  verifyToken   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  memberships       WorkspaceMember[]
+  ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
+  posts             Post[]
+  aiUsage           AiUsage[]
+  auditLogs         AuditLog[]
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner          User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  members        WorkspaceMember[]
+  invites        Invite[]
+  brandProfile   BrandProfile?
+  aiSettings     AiSettings?
+  socialAccounts SocialAccount[]
+  posts          Post[]
+  conversations  Conversation[]
+  aiUsage        AiUsage[]
+  assistantMessages AssistantMessage[]
+  subscription   Subscription?
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+}
+
+model WorkspaceMember {
+  id          String       @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        UserRole     @default(VIEWER)
+  status      MemberStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model Invite {
+  id          String       @id @default(cuid())
+  workspaceId String
+  email       String
+  role        UserRole     @default(VIEWER)
+  token       String       @unique @default(cuid())
+  status      InviteStatus @default(PENDING)
+  invitedById String
+  expiresAt   DateTime
+  createdAt   DateTime     @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, email])
+}
+
+// ---------------------------------------------------------------------------
+// Brand & AI configuration
+// ---------------------------------------------------------------------------
+
+model BrandProfile {
+  id                 String   @id @default(cuid())
+  workspaceId        String   @unique
+  businessName       String?
+  description        String?  @db.Text
+  industry           String?
+  productsServices   String?  @db.Text
+  targetAudience     String?
+  brandVoice         String?
+  writingStyle       String?
+  brandColors        String?
+  contentRestrictions String? @db.Text
+  language           String?  @default("English")
+  website            String?
+  links              String?
+  updatedAt          DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model AiSettings {
+  id             String  @id @default(cuid())
+  workspaceId    String  @unique
+  mode           AiMode  @default(MANUAL)
+  autoReply      Boolean @default(false)
+  restrictedTopics String?
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Social accounts & OAuth
+// ---------------------------------------------------------------------------
+
+model SocialAccount {
+  id              String        @id @default(cuid())
+  workspaceId     String
+  platform        Platform
+  externalId      String
+  username        String
+  displayName     String
+  avatarUrl       String?
+  accessTokenEnc  String?
+  refreshTokenEnc String?
+  tokenExpiresAt  DateTime?
+  scopes          String?
+  status          AccountStatus @default(CONNECTED)
+  isDemo          Boolean       @default(false)
+  connectedById   String
+  createdAt       DateTime      @default(now())
+
+  workspace    Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  targets      PostTarget[]
+  conversations Conversation[]
+  snapshots    AnalyticsSnapshot[]
+
+  @@unique([workspaceId, platform, externalId])
+  @@index([workspaceId])
+}
+
+// Global platform OAuth app configuration (client id/secret stored encrypted)
+model OAuthAppConfig {
+  id              String   @id @default(cuid())
+  platform        Platform @unique
+  clientIdEnc     String
+  clientSecretEnc String
+  configuredById  String
+  updatedAt       DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Content
+// ---------------------------------------------------------------------------
+
+model Post {
+  id             String     @id @default(cuid())
+  workspaceId    String
+  authorId       String
+  content        String     @db.Text
+  hashtags       String[]
+  status         PostStatus @default(DRAFT)
+  origin         PostOrigin @default(MANUAL)
+  scheduledAt    DateTime?
+  publishedAt    DateTime?
+  aiModel        String?
+  aiPrompt       String?    @db.Text
+  failureReason  String?
+  idempotencyKey String?    @unique
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author    User         @relation(fields: [authorId], references: [id])
+  media     PostMedia[]
+  targets   PostTarget[]
+  jobs      PublishingJob[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, scheduledAt])
+}
+
+model PostMedia {
+  id          String       @id @default(cuid())
+  postId      String
+  type        MediaType    @default(IMAGE)
+  provider    MediaProvider @default(UPLOADED)
+  url         String
+  storageKey  String
+  mimeType    String
+  width       Int?
+  height      Int?
+  size        Int?
+  aspectRatio String?
+  altText     String?
+  createdAt   DateTime     @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+}
+
+model PostTarget {
+  id             String     @id @default(cuid())
+  postId         String
+  accountId      String
+  platform       Platform
+  status         PostStatus @default(PENDING_APPROVAL)
+  externalPostId String?
+  publishedAt    DateTime?
+  error          String?
+
+  post    Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  account SocialAccount @relation(fields: [accountId], references: [id])
+
+  @@unique([postId, accountId])
+  @@index([accountId])
+}
+
+// ---------------------------------------------------------------------------
+// Publishing engine
+// ---------------------------------------------------------------------------
+
+model PublishingJob {
+  id             String    @id @default(cuid())
+  postId         String
+  targetId       String
+  runAt          DateTime  @default(now())
+  status         JobStatus @default(PENDING)
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  lastError      String?   @db.Text
+  lockedAt       DateTime?
+  driver         String    @default("db")
+  idempotencyKey String    @unique
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  post     Post           @relation(fields: [postId], references: [id], onDelete: Cascade)
+  history  PublishingAttempt[]
+
+  @@index([status, runAt])
+  @@index([targetId])
+}
+
+model PublishingAttempt {
+  id        String   @id @default(cuid())
+  jobId     String
+  postId    String
+  targetId  String
+  attempt   Int
+  ok        Boolean
+  httpStatus Int?
+  response  String?  @db.Text
+  error     String?  @db.Text
+  createdAt DateTime @default(now())
+
+  job PublishingJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([targetId])
+}
+
+// ---------------------------------------------------------------------------
+// Inbox (supported comment/message management)
+// ---------------------------------------------------------------------------
+
+model Conversation {
+  id              String             @id @default(cuid())
+  workspaceId     String
+  accountId       String
+  platform        Platform
+  externalId      String
+  participantName String
+  subject         String?
+  lastMessageAt   DateTime           @default(now())
+  status          ConversationStatus @default(OPEN)
+  createdAt       DateTime           @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account   SocialAccount @relation(fields: [accountId], references: [id])
+  messages  Message[]
+
+  @@unique([accountId, externalId])
+  @@index([workspaceId, status])
+}
+
+model Message {
+  id             String          @id @default(cuid())
+  conversationId String
+  externalId     String?
+  direction      MessageDirection
+  authorName     String
+  text           String          @db.Text
+  aiDraft        String?
+  createdAt      DateTime        @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Analytics
+// ---------------------------------------------------------------------------
+
+model AnalyticsSnapshot {
+  id        String   @id @default(cuid())
+  accountId String
+  date      DateTime @db.Date
+  metrics   Json
+  source    String   @default("platform_api")
+  createdAt DateTime @default(now())
+
+  account SocialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, date])
+}
+
+// ---------------------------------------------------------------------------
+// AI usage & assistant history
+// ---------------------------------------------------------------------------
+
+model AiUsage {
+  id          String  @id @default(cuid())
+  workspaceId String
+  userId      String
+  kind        AiKind
+  credits     Int     @default(1)
+  model       String?
+  meta        Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([workspaceId, createdAt])
+}
+
+model AssistantMessage {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Billing, notifications, audit
+// ---------------------------------------------------------------------------
+
+model Subscription {
+  id          String             @id @default(cuid())
+  workspaceId String             @unique
+  plan        PlanTier           @default(FREE)
+  status      SubscriptionStatus @default(ACTIVE)
+  provider    String             @default("none")
+  periodStart DateTime?
+  periodEnd   DateTime?
+  updatedAt   DateTime           @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String?
+  type        String
+  title       String
+  body        String?
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, read])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String
+  actorId     String?
+  action      String
+  entity      String
+  entityId    String?
+  meta        Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     User?     @relation(fields: [actorId], references: [id])
+
+  @@index([workspaceId, createdAt])
+}

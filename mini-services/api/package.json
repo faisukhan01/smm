@@ -1,0 +1,30 @@
+{
+  "name": "@smm/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun run build:swc && node --env-file=../../.env dist/src/main.js",
+    "build:swc": "cd ../../packages/shared && bunx swc src -d dist && cd ../../mini-services/api && bunx swc src -d dist",
+    "start": "node --env-file=../../.env dist/src/main.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/jwt": "^11.0.0",
+    "@nestjs/platform-express": "^11.1.6",
+    "@nestjs/swagger": "^11.2.0",
+    "@prisma/client": "^6.11.1",
+    "@smm/shared": "workspace:*",
+    "cookie-parser": "^1.4.7",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "z-ai-web-dev-sdk": "^0.0.18",
+    "zod": "^4.0.2"
+  },
+  "devDependencies": {
+    "@swc/cli": "^0.7.8",
+    "@swc/core": "^1.13.5",
+    "@types/cookie-parser": "^1.4.9",
+    "@types/express": "^5.0.3"
+  }
+}
