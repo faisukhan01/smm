@@ -20,7 +20,9 @@ export class ApiError extends Error {
 
 function buildUrl(path: string): string {
   const url = new URL(`/api/v1${path}`, window.location.origin);
-  if (!url.searchParams.has('XTransformPort')) {
+  // Sandbox only: the gateway forwards by port query param. In real
+  // deployments (Vercel rewrite proxy) requests are plain same-origin.
+  if (process.env.NEXT_PUBLIC_SANDBOX === '1' && !url.searchParams.has('XTransformPort')) {
     url.searchParams.set('XTransformPort', API_PORT);
   }
   return url.toString();
