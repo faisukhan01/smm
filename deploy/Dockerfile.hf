@@ -1,0 +1,39 @@
+# SMM all-in-one for Hugging Face Spaces (Docker SDK, free — no card required)
+# HF runs Space containers as UID 1000, so we set up a matching user.
+# The Space's README front-matter must declare: sdk: docker, app_port: 7860
+FROM oven/bun:1-slim AS build
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY package.json bun.lock ./
+COPY packages packages
+COPY mini-services mini-services
+COPY prisma prisma
+
+RUN bun install
+RUN bunx prisma generate --schema prisma/schema.prisma
+RUN bunx swc packages/shared/src -d packages/shared/dist \
+ && bunx swc mini-services/api/src -d mini-services/api/dist
+
+FROM oven/bun:1-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=build /app /app
+
+ENV NODE_ENV=production
+# HF Spaces route traffic to app_port declared in the Space README (7860).
+ENV PORT=7860
+
+# HF requires the container process to run as UID 1000.
+RUN useradd -m -u 1000 user \
+ && mkdir -p /app/uploads \
+ && chown -R user:user /app/uploads
+USER 1000
+ENV HOME=/home/user
+
+COPY --chown=user:user deploy/start-all.sh /usr/local/bin/start-all.sh
+RUN chmod +x /usr/local/bin/start-all.sh
+
+EXPOSE 7860
+CMD ["bash", "/usr/local/bin/start-all.sh"]

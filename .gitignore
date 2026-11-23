@@ -57,3 +57,7 @@ agent-ctx/
 /test/
 /prompt/
 local-*
+
+# Hugging Face Space staging (generated)
+deploy/hf-space/*
+!deploy/hf-space/README.md
