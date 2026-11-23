@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from './common/prisma.module';
+import { HealthController } from './common/health.controller';
 import { AuthModule } from './modules/auth/auth.module';
 // Domain modules (workspace, brand, accounts, posts, media, ai, inbox,
 // analytics, billing, notifications, audit, oauth) are registered here
@@ -18,6 +19,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { AccountModule } from './modules/account/account.module';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     PrismaModule,
     AuthModule,
