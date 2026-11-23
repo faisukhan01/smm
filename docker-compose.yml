@@ -1,0 +1,62 @@
+# SMM — Oracle Cloud Always Free / any Docker host
+# Run from the repo root:
+#   cp deploy/.env.oracle.example .env   (fill values)
+#   docker compose up -d --build
+#
+# Services: api (NestJS REST API) · worker (publishing engine) · caddy (auto-HTTPS proxy)
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: mini-services/api/Dockerfile
+    image: smm-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Inside the compose network the API listens here; Caddy proxies to it.
+      API_PORT: 3001
+    expose:
+      - "3001"
+    volumes:
+      - uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:3001/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    build:
+      context: .
+      dockerfile: mini-services/worker/Dockerfile
+    image: smm-worker
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - API_DOMAIN=${API_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+volumes:
+  uploads:
+  caddy_data:
+  caddy_config:
