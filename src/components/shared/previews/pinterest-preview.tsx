@@ -26,7 +26,7 @@ export function PinterestPreview({ content, hashtags, mediaUrl, accountName }: P
       <div className="p-3">
         {mediaUrl ? (
           <>
-            {/* eslint-disable-next-line @next/next/no-img-element -- media is served by this app under /api/media */}
+            { }
             <img
               src={mediaUrl}
               alt={`Pin media for ${accountName}`}

@@ -135,7 +135,7 @@ export function ImageGenerator({ enabled, attachedIds, onAttach }: ImageGenerato
 
         {result ? (
           <div className="space-y-3 border-t pt-4">
-            {/* eslint-disable-next-line @next/next/no-img-element -- media is served by this app under /api/media */}
+            { }
             <img
               src={result.url}
               alt={`AI generated image for: ${result.prompt}`}

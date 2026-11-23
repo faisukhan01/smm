@@ -1,4 +1,4 @@
-import { Controller, Get, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
 import { brandSchema, type BrandInput } from '@smm/shared';
 import { AuthGuard, requirePermission, type AuthContext } from '../../common/auth.guard';
 import { CurrentAuth } from '../../common/current-auth.decorator';

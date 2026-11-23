@@ -77,7 +77,7 @@ export function WorkspaceTeamSettings({ session }: { session: SessionPayload }) 
     if (data) {
       setWorkspaceName(data.workspace.name);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [workspaceQ.isSuccess]);
 
   const renameMut = useMutation({

@@ -12,12 +12,6 @@ export interface AuthContext {
 
 export const SESSION_COOKIE = 'smm_session';
 
-declare module 'express-serve-static-core' {
-  interface Request {
-    auth?: AuthContext;
-  }
-}
-
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
@@ -26,7 +20,7 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest();
+    const req = context.switchToHttp().getRequest() as { cookies?: Record<string, string>; auth?: AuthContext };
     const token: string | undefined = req.cookies?.[SESSION_COOKIE];
     if (!token) throw new UnauthorizedException('Not authenticated');
 

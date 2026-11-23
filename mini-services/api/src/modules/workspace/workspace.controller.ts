@@ -13,7 +13,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { inviteSchema, type InviteInput } from '@smm/shared';
+import { inviteSchema } from '@smm/shared';
 import { AuthGuard, requirePermission, type AuthContext } from '../../common/auth.guard';
 import { CurrentAuth } from '../../common/current-auth.decorator';
 import { PrismaService } from '../../common/prisma.module';
@@ -95,7 +95,7 @@ export class WorkspaceController {
   @Post('invites')
   async createInvite(
     @CurrentAuth() auth: AuthContext,
-    @Body(new ZodValidationPipe(inviteSchema)) body: InviteInput,
+    @Body(new ZodValidationPipe(inviteSchema)) body: z.infer<typeof inviteSchema>,
   ) {
     requirePermission(auth, 'team:manage');
     const [memberCount, pendingInvites] = await Promise.all([

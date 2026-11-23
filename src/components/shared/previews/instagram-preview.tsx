@@ -35,7 +35,7 @@ export function InstagramPreview({ content, hashtags, mediaUrl, accountName }: I
 
       {mediaUrl ? (
         <>
-          {/* eslint-disable-next-line @next/next/no-img-element -- media is served by this app under /api/media */}
+          { }
           <img
             src={mediaUrl}
             alt={`Post media for ${accountName}`}

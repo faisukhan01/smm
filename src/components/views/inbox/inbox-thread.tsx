@@ -87,6 +87,7 @@ export function InboxThread({ conversationId, session, onBack }: InboxThreadProp
       apiPost<{ draft: string }>('/ai/reply-draft', { conversationId, messageId }),
     onSuccess: () => {
       invalidateInbox();
+      queryClient.invalidateQueries({ queryKey: ['inbox'] });
       toast({ title: 'AI draft ready', description: 'Review the draft before sending — nothing is sent automatically.' });
     },
     onError: (e) => {

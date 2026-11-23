@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   BadRequestException,
+  Body,
   Controller,
   Delete,
   Get,

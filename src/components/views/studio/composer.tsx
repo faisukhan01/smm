@@ -241,7 +241,7 @@ export function Composer({
               <div className="flex flex-wrap gap-2">
                 {media.map((item) =>
                   item.type === 'IMAGE' ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- media is served by this app under /api/media
+                     
                     <img
                       key={item.id}
                       src={item.url}

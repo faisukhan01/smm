@@ -22,6 +22,7 @@ const _analyticsmodule = require("./modules/analytics/analytics.module");
 const _billingmodule = require("./modules/billing/billing.module");
 const _notificationsmodule = require("./modules/notifications/notifications.module");
 const _auditmodule = require("./modules/audit/audit.module");
+const _accountmodule = require("./modules/account/account.module");
 function _ts_decorate(decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -45,7 +46,8 @@ AppModule = _ts_decorate([
             _analyticsmodule.AnalyticsModule,
             _billingmodule.BillingModule,
             _notificationsmodule.NotificationsModule,
-            _auditmodule.AuditModule
+            _auditmodule.AuditModule,
+            _accountmodule.AccountModule
         ]
     })
 ], AppModule);

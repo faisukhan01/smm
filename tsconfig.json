@@ -43,6 +43,11 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "mini-services",
+    "examples",
+    "tests",
+    "skills",
+    "packages/shared/dist"
   ]
 }

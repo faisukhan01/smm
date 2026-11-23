@@ -1,12 +1,9 @@
-import { Controller, Get, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
+import { PrismaModule } from '../../common/prisma.module';
+import { MediaController } from './media.controller';
 
-@Controller('media')
-export class MediaController {
-  @Get()
-  placeholder() {
-    return { status: 'NOT_IMPLEMENTED', module: 'media' };
-  }
-}
-
-@Module({ controllers: [MediaController] })
+@Module({
+  imports: [PrismaModule],
+  controllers: [MediaController],
+})
 export class MediaModule {}

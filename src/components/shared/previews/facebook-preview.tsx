@@ -55,7 +55,7 @@ export function FacebookPreview({ content, hashtags, mediaUrl, accountName }: Fa
 
       {mediaUrl ? (
         <div className="px-3 pb-3">
-          {/* eslint-disable-next-line @next/next/no-img-element -- media is served by this app under /api/media */}
+          { }
           <img
             src={mediaUrl}
             alt={`Post media for ${accountName}`}

@@ -129,7 +129,7 @@ export function MediaUploader({ media, onAttach, onRemove }: MediaUploaderProps)
             {media.map((item) => (
               <div key={item.id} className="group relative">
                 {item.type === 'IMAGE' ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- media is served by this app under /api/media
+                   
                   <img
                     src={item.url}
                     alt={item.altText ?? 'Attached media'}
