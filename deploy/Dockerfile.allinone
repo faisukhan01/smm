@@ -1,0 +1,33 @@
+# SMM all-in-one — NestJS API + publishing worker in ONE container.
+# Purpose-built for Render's free web service (750 h/month covers exactly
+# one always-on service): HTTP on $PORT, worker polling in the background.
+# Also works on any host where you want everything in a single container.
+FROM oven/bun:1-slim AS build
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY package.json bun.lock ./
+COPY packages packages
+COPY mini-services mini-services
+COPY prisma prisma
+
+RUN bun install
+RUN bunx prisma generate --schema prisma/schema.prisma
+RUN bunx swc packages/shared/src -d packages/shared/dist \
+ && bunx swc mini-services/api/src -d mini-services/api/dist
+
+FROM oven/bun:1-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=build /app /app
+
+ENV NODE_ENV=production
+# Render detects the open port automatically; set PORT in the dashboard
+# (e.g. 10000) if you prefer — main.ts honors PORT first.
+EXPOSE 3001
+
+COPY deploy/start-all.sh /usr/local/bin/start-all.sh
+RUN chmod +x /usr/local/bin/start-all.sh
+
+CMD ["bash", "/usr/local/bin/start-all.sh"]
