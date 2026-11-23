@@ -31,7 +31,8 @@ async function bootstrap() {
     app.enableShutdownHooks();
     const swaggerConfig = new _swagger.DocumentBuilder().setTitle('SMM API').setDescription('AI Social Media Manager — REST API').setVersion('0.1.0').build();
     _swagger.SwaggerModule.setup('api/v1/docs', app, _swagger.SwaggerModule.createDocument(app, swaggerConfig));
-    const port = Number(process.env.API_PORT || 3001);
+    // Platform port first (Railway/Render/Cloud Run inject PORT), then API_PORT.
+    const port = Number(process.env.PORT || process.env.API_PORT || 3001);
     await app.listen(port, '0.0.0.0');
     logger.log(`SMM API listening on :${port}`);
 }

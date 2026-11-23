@@ -10,6 +10,7 @@ Object.defineProperty(exports, "AppModule", {
 });
 const _common = require("@nestjs/common");
 const _prismamodule = require("./common/prisma.module");
+const _healthcontroller = require("./common/health.controller");
 const _authmodule = require("./modules/auth/auth.module");
 const _workspacemodule = require("./modules/workspace/workspace.module");
 const _brandmodule = require("./modules/brand/brand.module");
@@ -33,6 +34,9 @@ class AppModule {
 }
 AppModule = _ts_decorate([
     (0, _common.Module)({
+        controllers: [
+            _healthcontroller.HealthController
+        ],
         imports: [
             _prismamodule.PrismaModule,
             _authmodule.AuthModule,
