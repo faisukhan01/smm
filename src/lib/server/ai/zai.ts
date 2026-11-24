@@ -3,8 +3,14 @@
  * one SDK instance per process, fixed model, assistant-role system prompt,
  * thinking disabled, and robust JSON extraction from model replies.
  *
- * The SDK is Node-only (reads .z-ai-config from disk inside ZAI.create()) and
- * has no import-time side effects, so a top-level import mirrors the Nest code.
+ * Client resolution:
+ * - ZAI_API_KEY set (production, e.g. Vercel): constructs the client directly
+ *   with the public Z.ai OpenAI-compatible endpoint — no config file needed.
+ *   ZAI_BASE_URL overrides the endpoint (defaults to api.z.ai/api/paas/v4).
+ * - Otherwise (sandbox/dev): ZAI.create() reads the local .z-ai-config file.
+ *
+ * The SDK is Node-only and has no import-time side effects, so a top-level
+ * import mirrors the Nest code.
  */
 import ZAI from 'z-ai-web-dev-sdk';
 
@@ -14,7 +20,19 @@ let cached: ZaiClient | null = null;
 
 /** One SDK instance per process. */
 export async function getZai(): Promise<ZaiClient> {
-  if (!cached) cached = await ZAI.create();
+  if (cached) return cached;
+  if (process.env.ZAI_API_KEY) {
+    const config = {
+      baseUrl: process.env.ZAI_BASE_URL || 'https://api.z.ai/api/paas/v4',
+      apiKey: process.env.ZAI_API_KEY,
+    };
+    // The SDK only ships a config-file loader; constructing the class directly
+    // with an equivalent config object keeps the wire behavior identical.
+    const Ctor = ZAI as unknown as new (cfg: typeof config) => ZaiClient;
+    cached = new Ctor(config);
+  } else {
+    cached = await ZAI.create();
+  }
   return cached;
 }
 
