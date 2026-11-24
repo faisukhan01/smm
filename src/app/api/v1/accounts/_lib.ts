@@ -214,28 +214,34 @@ const META_CONFIG_ID_ENV: Partial<Record<Platform, string>> = {
   INSTAGRAM: 'META_IG_LOGIN_CONFIG_ID',
 };
 
-function metaConfigIdQuery(platform: Platform): string {
+function metaConfigId(platform: Platform): string | undefined {
   const specific = META_CONFIG_ID_ENV[platform];
   const raw = ((specific && process.env[specific]) || process.env.META_LOGIN_CONFIG_ID || '').trim();
-  return raw ? `&config_id=${encodeURIComponent(raw)}` : '';
+  return raw || undefined;
 }
 
 export function buildAuthorizeUrl(platform: Platform, clientId: string, redirectUri: string, state: string): string {
-  if (platform === 'FACEBOOK') {
-    return (
-      `https://www.facebook.com/v21.0/dialog/oauth?client_id=${encodeURIComponent(clientId)}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}` +
-      `&scope=${encodeURIComponent('pages_show_list,pages_manage_posts,pages_read_engagement,pages_manage_engagement')}` +
-      metaConfigIdQuery(platform)
-    );
-  }
-  if (platform === 'INSTAGRAM') {
-    return (
-      `https://www.facebook.com/v21.0/dialog/oauth?client_id=${encodeURIComponent(clientId)}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}` +
-      `&scope=${encodeURIComponent('instagram_basic,instagram_content_publish,instagram_manage_comments,pages_show_list')}` +
-      metaConfigIdQuery(platform)
-    );
+  if (platform === 'FACEBOOK' || platform === 'INSTAGRAM') {
+    const configId = metaConfigId(platform);
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      state,
+    });
+    if (configId) {
+      // Facebook Login for Business: the configuration defines the granted
+      // permissions. Requesting scopes outside the configuration makes Meta
+      // reject the dialog with "Invalid Scopes" for developers, so the scope
+      // param is omitted entirely — the config governs what is asked.
+      params.set('config_id', configId);
+    } else {
+      const scope =
+        platform === 'FACEBOOK'
+          ? 'pages_show_list,pages_manage_posts,pages_read_engagement,pages_manage_engagement'
+          : 'instagram_basic,instagram_content_publish,instagram_manage_comments,pages_show_list';
+      params.set('scope', scope);
+    }
+    return `https://www.facebook.com/v21.0/dialog/oauth?${params.toString()}`;
   }
   return (
     `https://www.pinterest.com/oauth/?client_id=${encodeURIComponent(clientId)}` +
