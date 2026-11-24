@@ -152,7 +152,7 @@ export interface OAuthState {
   userId: string;
   createdAt: number;
   /** INSTAGRAM only: which login product the flow started with. */
-  igMode?: 'standalone' | 'facebook';
+  igMode?: 'standalone' | 'unified' | 'facebook';
 }
 
 function stateHmac(body: string): string {
@@ -233,6 +233,19 @@ export function instagramStandaloneCreds(): { appId: string; appSecret: string }
   return appId && appSecret ? { appId, appSecret } : null;
 }
 
+/**
+ * Instagram API with Unified Login (newer Meta apps only — the classic
+ * "API setup with Instagram login" is unavailable to them). A dedicated
+ * FB Login for Business configuration whose business assets include the
+ * customer's Instagram account; its config_id is created under
+ * Use cases → Instagram API → "API setup with Unified login" and provisioned
+ * separately from the Facebook-Pages login configuration.
+ */
+export function unifiedIgConfigId(): string | undefined {
+  const raw = (process.env.META_IG_UNIFIED_CONFIG_ID || '').trim();
+  return raw || undefined;
+}
+
 export function buildAuthorizeUrl(platform: Platform, clientId: string, redirectUri: string, state: string): string {
   if (platform === 'INSTAGRAM' && instagramStandaloneCreds()) {
     const params = new URLSearchParams({
@@ -243,6 +256,21 @@ export function buildAuthorizeUrl(platform: Platform, clientId: string, redirect
       scope: 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_comments,instagram_business_manage_insights',
     });
     return `https://www.instagram.com/oauth/authorize?${params.toString()}`;
+  }
+  if (platform === 'INSTAGRAM' && unifiedIgConfigId()) {
+    // Unified Login: the configuration (Instagram assets + instagram_*
+    // permissions) governs the dialog, so no scope param is sent. prompt=login
+    // always offers "Log in with Instagram", letting customers connect without
+    // a Facebook account or Page.
+    const params = new URLSearchParams({
+      client_id: clientId,
+      config_id: unifiedIgConfigId()!,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      state,
+      prompt: 'login',
+    });
+    return `https://www.facebook.com/dialog/oauth?${params.toString()}`;
   }
   if (platform === 'FACEBOOK' || platform === 'INSTAGRAM') {
     const configId = metaConfigId(platform);

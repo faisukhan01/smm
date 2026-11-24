@@ -27,6 +27,7 @@ import {
   encodeOAuthState,
   instagramStandaloneCreds,
   isSupportedPlatform,
+  unifiedIgConfigId,
 } from '../../../_lib';
 
 export const runtime = 'nodejs';
@@ -44,6 +45,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plat
     }
 
     const standalone = platform === 'INSTAGRAM' ? instagramStandaloneCreds() : null;
+    // Unified Login ("API setup with Unified login", newer Meta apps) when its
+    // configuration ID is provisioned; falls back to the FB-login flow otherwise.
+    const unified = platform === 'INSTAGRAM' && !standalone ? unifiedIgConfigId() : undefined;
 
     let clientId: string;
     if (standalone) {
@@ -71,7 +75,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plat
         workspaceId: auth.workspaceId,
         userId: auth.userId,
         createdAt: Date.now(),
-        ...(platform === 'INSTAGRAM' ? { igMode: standalone ? ('standalone' as const) : ('facebook' as const) } : {}),
+        ...(platform === 'INSTAGRAM'
+          ? { igMode: standalone ? ('standalone' as const) : unified ? ('unified' as const) : ('facebook' as const) }
+          : {}),
       }),
       OAUTH_STATE_COOKIE_OPTIONS,
     );

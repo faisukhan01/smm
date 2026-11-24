@@ -167,6 +167,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plat
         username = me.username ?? `ig_${externalId}`;
         displayName = me.username ?? username;
         avatarUrl = me.profile_picture_url ?? null;
+      } else if (platform === 'INSTAGRAM' && stored.igMode === 'unified') {
+        // --- Instagram API with Unified Login (newer Meta apps) --------------
+        // The login dialog (config_id governs permissions) returns a code that
+        // Meta docs mandate exchanging with the META app credentials. The
+        // result is a Business integration system-user access token (SUAT) —
+        // it belongs to the customer's business portfolio and does not expire.
+        const tokenRes = await fetch(
+          `https://graph.facebook.com/v27.0/oauth/access_token?client_id=${encodeURIComponent(clientId)}` +
+            `&client_secret=${encodeURIComponent(clientSecret)}&code=${encodeURIComponent(code)}`,
+          { signal: AbortSignal.timeout(15000) },
+        );
+        if (!tokenRes.ok) throw new Error(`Unified login token exchange failed (${tokenRes.status})`);
+        accessToken = ((await tokenRes.json()) as { access_token?: string }).access_token ?? '';
+        if (!accessToken) throw new Error('Unified login token exchange returned no access token');
+
+        // With a SUAT, /me is the business-integration system user — resolve
+        // the Instagram accounts the customer shared with the app instead.
+        // Scopes marker deliberately avoids "instagram_business_" so the
+        // publisher routes these accounts through graph.facebook.com.
+        const igsRes = await fetch(
+          `https://graph.facebook.com/v27.0/me/assigned_instagram_accounts?fields=id,username,name,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`,
+          { signal: AbortSignal.timeout(15000) },
+        );
+        if (!igsRes.ok) throw new Error(`Instagram accounts lookup failed (${igsRes.status})`);
+        const igs = (await igsRes.json()) as { data?: InstagramUser[] };
+        const ig = igs.data?.[0];
+        if (!ig) throw new Error('No Instagram Professional account was shared with the app during login');
+        externalId = ig.id;
+        username = ig.username;
+        displayName = ig.name ?? ig.username;
+        avatarUrl = ig.profile_picture_url ?? null;
+        scopes = 'unified_login';
       } else if (platform === 'PINTEREST') {
         const tokenRes = await fetch('https://api.pinterest.com/v5/oauth/token', {
           method: 'POST',
