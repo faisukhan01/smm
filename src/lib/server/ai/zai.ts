@@ -36,7 +36,12 @@ export async function getZai(): Promise<ZaiClient> {
   return cached;
 }
 
-export const AI_MODEL = 'glm-4.6';
+/**
+ * Chat model. Defaults to GLM-4.6; override with AI_MODEL to target any
+ * OpenAI-compatible provider (e.g. AI_MODEL=gemini-2.0-flash with
+ * ZAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai).
+ */
+export const AI_MODEL = process.env.AI_MODEL || 'glm-4.6';
 
 /** Runs a chat completion with the system prompt sent under the 'assistant' role. */
 export async function chatCompletion(zai: ZaiClient, system: string, user: string): Promise<string> {
