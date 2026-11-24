@@ -25,6 +25,7 @@ import {
   accountsPageUrl,
   callbackRedirectUri,
   decodeOAuthState,
+  instagramStandaloneCreds,
   notifyWorkspace,
   writeAudit,
   assertAccountQuota,
@@ -57,6 +58,18 @@ interface InstagramUser {
   name?: string;
   profile_picture_url?: string;
 }
+interface InstagramStandaloneTokenResponse {
+  access_token: string;
+  user_id: number;
+  permissions?: string;
+}
+interface InstagramStandaloneProfile {
+  user_id?: string;
+  id?: string;
+  username?: string;
+  account_type?: string;
+  profile_picture_url?: string;
+}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ platform: string }> }): Promise<NextResponse> {
   try {
@@ -87,11 +100,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plat
       return errorRedirect('Invalid or expired OAuth state');
     }
 
-    // --- 2. Load the platform app credentials ---
-    const config = await db.oAuthAppConfig.findUnique({ where: { platform } });
-    if (!config) return errorRedirect('OAuth app not configured for this platform');
-    const clientId = decryptSecret(config.clientIdEnc);
-    const clientSecret = decryptSecret(config.clientSecretEnc);
+    // --- 2. Load the platform app credentials ------------------------------
+    // Instagram standalone ("Instagram API with Instagram Login") exchanges
+    // codes with env-provided Instagram app credentials instead of the shared
+    // OAuthAppConfig row (which holds the Meta/Facebook app for FB-login flows).
+    const standalone = platform === 'INSTAGRAM' && stored.igMode === 'standalone' ? instagramStandaloneCreds() : null;
+    if (platform === 'INSTAGRAM' && stored.igMode === 'standalone' && !standalone) {
+      return errorRedirect('Instagram standalone credentials are not configured on the server');
+    }
+
+    let clientId = '';
+    let clientSecret = '';
+    if (!standalone) {
+      const config = await db.oAuthAppConfig.findUnique({ where: { platform } });
+      if (!config) return errorRedirect('OAuth app not configured for this platform');
+      clientId = decryptSecret(config.clientIdEnc);
+      clientSecret = decryptSecret(config.clientSecretEnc);
+    }
     const redirectUri = callbackRedirectUri(req, platform);
 
     // --- 3. Exchange the code, fetch the profile, upsert the account ---
@@ -103,7 +128,46 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plat
       let avatarUrl: string | null = null;
       let scopes: string | null = null;
 
-      if (platform === 'PINTEREST') {
+      if (standalone) {
+        // --- Instagram API with Instagram Login (no Facebook involved) -------
+        const tokenRes = await fetch('https://api.instagram.com/oauth/access_token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: standalone.appId,
+            client_secret: standalone.appSecret,
+            grant_type: 'authorization_code',
+            redirect_uri: redirectUri,
+            code,
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!tokenRes.ok) throw new Error(`Instagram token exchange failed (${tokenRes.status})`);
+        const tokenJson = (await tokenRes.json()) as InstagramStandaloneTokenResponse;
+        scopes = tokenJson.permissions ?? null;
+
+        // Short-lived (1h) → long-lived (~60 days) via graph.instagram.com.
+        const longRes = await fetch(
+          `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${encodeURIComponent(standalone.appSecret)}` +
+            `&access_token=${encodeURIComponent(tokenJson.access_token)}`,
+          { signal: AbortSignal.timeout(15000) },
+        );
+        accessToken = longRes.ok ? ((await longRes.json()) as { access_token: string }).access_token : tokenJson.access_token;
+
+        const meRes = await fetch(
+          `https://graph.instagram.com/me?fields=user_id,username,account_type,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`,
+          { signal: AbortSignal.timeout(15000) },
+        );
+        if (!meRes.ok) throw new Error(`Instagram profile fetch failed (${meRes.status})`);
+        const me = (await meRes.json()) as InstagramStandaloneProfile;
+        if (me.account_type && me.account_type !== 'BUSINESS' && me.account_type !== 'CREATOR') {
+          throw new Error('Only Instagram Professional (Business or Creator) accounts can be connected');
+        }
+        externalId = me.user_id ?? me.id ?? String(tokenJson.user_id);
+        username = me.username ?? `ig_${externalId}`;
+        displayName = me.username ?? username;
+        avatarUrl = me.profile_picture_url ?? null;
+      } else if (platform === 'PINTEREST') {
         const tokenRes = await fetch('https://api.pinterest.com/v5/oauth/token', {
           method: 'POST',
           headers: {
@@ -137,6 +201,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plat
         if (!tokenRes.ok) throw new Error(`Token exchange failed (${tokenRes.status})`);
         const tokenJson = (await tokenRes.json()) as { access_token: string };
         accessToken = tokenJson.access_token;
+
+        // Facebook user tokens from the dialog are short-lived (~1-2h). Upgrade
+        // to a ~60-day token so scheduled publishing keeps working; on failure
+        // fall back to the short-lived token (honest degradation).
+        if (platform === 'FACEBOOK' || platform === 'INSTAGRAM') {
+          try {
+            const longRes = await fetch(
+              `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${encodeURIComponent(clientId)}` +
+                `&client_secret=${encodeURIComponent(clientSecret)}&fb_exchange_token=${encodeURIComponent(accessToken)}`,
+              { signal: AbortSignal.timeout(15000) },
+            );
+            if (longRes.ok) {
+              accessToken = ((await longRes.json()) as { access_token?: string }).access_token ?? accessToken;
+            }
+          } catch {
+            /* keep the short-lived token */
+          }
+        }
 
         const pagesRes = await fetch(
           `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,username,picture&access_token=${encodeURIComponent(accessToken)}`,

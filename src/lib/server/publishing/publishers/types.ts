@@ -30,6 +30,10 @@ export interface PublisherAccount {
   platform: Platform;
   externalId: string;
   username: string;
+  /** OAuth scopes stored on the SocialAccount — used by the Instagram
+   *  publisher to detect standalone ("Instagram Login") accounts, which must
+   *  talk to graph.instagram.com instead of graph.facebook.com. */
+  scopes?: string | null;
 }
 
 export interface PublisherPost {

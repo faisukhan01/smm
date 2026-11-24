@@ -17,9 +17,16 @@
 import { failureFromHttp, firstImage, firstVideo, httpRequest, pickExternalId, type Publisher, type PublishResult } from './types';
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v21.0';
+/** Standalone ("Instagram Login") accounts carry these scopes → graph.instagram.com. */
+const STANDALONE_SCOPE_MARKER = 'instagram_business_';
+const GRAPH_IG_BASE = 'https://graph.instagram.com/v21.0';
 
 export const instagramPublisher: Publisher = async (ctx): Promise<PublishResult> => {
   const igUserId = ctx.account.externalId;
+  // Standalone accounts authenticate directly with Instagram (env-provided app
+  // creds at connect time); FB-login accounts ride the Meta/Facebook app.
+  const isStandalone = (ctx.account.scopes ?? '').includes(STANDALONE_SCOPE_MARKER);
+  const apiBase = isStandalone ? GRAPH_IG_BASE : GRAPH_API_BASE;
   const image = firstImage(ctx.media);
   const video = firstVideo(ctx.media);
 
@@ -40,7 +47,7 @@ export const instagramPublisher: Publisher = async (ctx): Promise<PublishResult>
     containerForm.set('media_type', 'REELS');
   }
 
-  const createResult = await httpRequest(`${GRAPH_API_BASE}/${igUserId}/media`, {
+  const createResult = await httpRequest(`${apiBase}/${igUserId}/media`, {
     method: 'POST',
     body: containerForm,
   });
@@ -58,7 +65,7 @@ export const instagramPublisher: Publisher = async (ctx): Promise<PublishResult>
   }
 
   // Step 2 — publish the container.
-  const publishResult = await httpRequest(`${GRAPH_API_BASE}/${igUserId}/media_publish`, {
+  const publishResult = await httpRequest(`${apiBase}/${igUserId}/media_publish`, {
     method: 'POST',
     body: new URLSearchParams({ access_token: ctx.token, creation_id: creationId }),
   });

@@ -151,6 +151,8 @@ export interface OAuthState {
   workspaceId: string;
   userId: string;
   createdAt: number;
+  /** INSTAGRAM only: which login product the flow started with. */
+  igMode?: 'standalone' | 'facebook';
 }
 
 function stateHmac(body: string): string {
@@ -220,7 +222,28 @@ function metaConfigId(platform: Platform): string | undefined {
   return raw || undefined;
 }
 
+/**
+ * Instagram standalone credentials ("Instagram API with Instagram Login") —
+ * when present, Connect Instagram authenticates directly with the Instagram
+ * account (no Facebook Page dependency) instead of the FB-login flow.
+ */
+export function instagramStandaloneCreds(): { appId: string; appSecret: string } | null {
+  const appId = (process.env.INSTAGRAM_APP_ID || '').trim();
+  const appSecret = (process.env.INSTAGRAM_APP_SECRET || '').trim();
+  return appId && appSecret ? { appId, appSecret } : null;
+}
+
 export function buildAuthorizeUrl(platform: Platform, clientId: string, redirectUri: string, state: string): string {
+  if (platform === 'INSTAGRAM' && instagramStandaloneCreds()) {
+    const params = new URLSearchParams({
+      client_id: instagramStandaloneCreds()!.appId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      state,
+      scope: 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_comments,instagram_business_manage_insights',
+    });
+    return `https://www.instagram.com/oauth/authorize?${params.toString()}`;
+  }
   if (platform === 'FACEBOOK' || platform === 'INSTAGRAM') {
     const configId = metaConfigId(platform);
     const params = new URLSearchParams({

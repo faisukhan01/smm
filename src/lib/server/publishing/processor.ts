@@ -321,6 +321,7 @@ export async function processPublishingJob(jobId: string, attemptsMade?: number)
       platform: account.platform,
       externalId: account.externalId,
       username: account.username,
+      scopes: account.scopes,
     },
     token,
     composedText,

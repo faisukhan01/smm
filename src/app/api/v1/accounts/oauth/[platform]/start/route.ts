@@ -25,6 +25,7 @@ import {
   buildAuthorizeUrl,
   callbackRedirectUri,
   encodeOAuthState,
+  instagramStandaloneCreds,
   isSupportedPlatform,
 } from '../../../_lib';
 
@@ -42,12 +43,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plat
       return NextResponse.redirect(accountsPageUrl(req, { message: 'Unknown platform' }), 302);
     }
 
-    const config = await db.oAuthAppConfig.findUnique({ where: { platform } });
-    if (!config) {
-      return NextResponse.redirect(accountsPageUrl(req, { message: 'OAuth app not configured for this platform' }), 302);
+    const standalone = platform === 'INSTAGRAM' ? instagramStandaloneCreds() : null;
+
+    let clientId: string;
+    if (standalone) {
+      // Instagram standalone ("Instagram API with Instagram Login"): the client
+      // id/secret come from env, not the shared OAuthAppConfig row.
+      clientId = standalone.appId;
+    } else {
+      const config = await db.oAuthAppConfig.findUnique({ where: { platform } });
+      if (!config) {
+        return NextResponse.redirect(accountsPageUrl(req, { message: 'OAuth app not configured for this platform' }), 302);
+      }
+      clientId = decryptSecret(config.clientIdEnc);
     }
 
-    const clientId = decryptSecret(config.clientIdEnc);
     const state = randomUUID();
     const redirectUri = callbackRedirectUri(req, platform);
     const authorizeUrl = buildAuthorizeUrl(platform, clientId, redirectUri, state);
@@ -61,6 +71,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plat
         workspaceId: auth.workspaceId,
         userId: auth.userId,
         createdAt: Date.now(),
+        ...(platform === 'INSTAGRAM' ? { igMode: standalone ? ('standalone' as const) : ('facebook' as const) } : {}),
       }),
       OAUTH_STATE_COOKIE_OPTIONS,
     );
