@@ -14,17 +14,15 @@ import { NextResponse } from 'next/server';
 
 const ROOT = '/home/z/my-project';
 
-const SERVICES: Record<string, { cmd: string; args: string[]; cwd: string }> = {
-  api: {
-    cmd: 'node',
-    args: ['--env-file=.env', 'mini-services/api/dist/src/main.js'],
-    cwd: ROOT,
-  },
-  worker: {
-    cmd: 'bun',
-    args: ['--env-file=.env', 'mini-services/worker/src/main.ts'],
-    cwd: ROOT,
-  },
+/**
+ * Command stored as a single runtime string and split on use — Turbopack
+ * statically analyzes spawn() argument literals and tries to resolve them as
+ * bundled modules ("Can't resolve '--env-file=.env'"), which breaks `next
+ * build`. Splitting at runtime keeps the arguments opaque to the bundler.
+ */
+const SERVICES: Record<string, { spec: string; cwd: string }> = {
+  api: { spec: 'node --env-file=.env mini-services/api/dist/src/main.js', cwd: ROOT },
+  worker: { spec: 'bun --env-file=.env mini-services/worker/src/main.ts', cwd: ROOT },
 };
 
 async function isUp(port: number, path: string): Promise<boolean> {
@@ -62,7 +60,8 @@ export async function POST(req: Request) {
   }
 
   const log = openSync(`${ROOT}/${service}.log`, 'a');
-  const child = spawn(svc.cmd, svc.args, {
+  const [cmd, ...args] = svc.spec.split(' ');
+  const child = spawn(cmd, args, {
     cwd: svc.cwd,
     detached: true,
     stdio: ['ignore', log, log],
