@@ -1,10 +1,7 @@
 /**
- * Typed API client for the NestJS backend (mini-services/api on :3001).
- * The sandbox gateway forwards requests using the XTransformPort query param.
- * All requests are relative and send the httpOnly session cookie.
+ * Typed API client for the built-in Next.js API (src/app/api/v1).
+ * All requests are relative, same-origin, and send the httpOnly session cookie.
  */
-
-const API_PORT = '3001';
 
 export class ApiError extends Error {
   status: number;
@@ -20,11 +17,6 @@ export class ApiError extends Error {
 
 function buildUrl(path: string): string {
   const url = new URL(`/api/v1${path}`, window.location.origin);
-  // Sandbox only: the gateway forwards by port query param. In real
-  // deployments (Vercel rewrite proxy) requests are plain same-origin.
-  if (process.env.NEXT_PUBLIC_SANDBOX === '1' && !url.searchParams.has('XTransformPort')) {
-    url.searchParams.set('XTransformPort', API_PORT);
-  }
   return url.toString();
 }
 

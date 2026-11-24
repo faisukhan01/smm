@@ -47,7 +47,6 @@ function errorMessage(e: unknown): string {
   return 'Something went wrong. Please try again.';
 }
 
-type OauthStartResponse = { authorizeUrl: string } | { configured: false };
 
 interface PlatformCardProps {
   platform: Platform;
@@ -102,15 +101,12 @@ function PlatformCard({ platform, accounts, configured, canConnect, canDisconnec
   async function startOAuth() {
     setStarting(true);
     try {
-      const res = await apiGet<OauthStartResponse>(`/accounts/oauth/${platform}/start`);
-      if ('authorizeUrl' in res && res.authorizeUrl) {
-        window.location.href = res.authorizeUrl;
-        return;
-      }
-      toast({ title: 'OAuth not configured', description: `Add your ${meta.name} developer app credentials first.` });
+      // The start route validates the OAuth app config itself and either
+      // redirects to the platform authorize URL (302) or back with an error
+      // message — no JSON contract needed.
+      window.location.href = `/api/v1/accounts/oauth/${platform.toLowerCase()}/start`;
     } catch (e) {
       toast({ title: 'Could not start OAuth', description: errorMessage(e), variant: 'destructive' });
-    } finally {
       setStarting(false);
     }
   }

@@ -217,14 +217,18 @@ Create an account from the landing page, connect sandbox demo accounts to explor
 
 Quota errors surface in the UI with an upgrade path; the matrix is defined once in `packages/shared` and consumed by API, worker and UI alike. AI credits are pre-deducted monthly and metered per generation.
 
-## Deployment
+## Deployment — one app, one platform
+
+SMM runs as a **full-stack Next.js app**: the REST API (`/api/v1/*`), the AI studio and the publishing engine all live inside the Next.js server. That means the entire backend deploys wherever the frontend does.
 
 | Piece | Target | Notes |
 | --- | --- | --- |
-| Web app | **Vercel** | `next build` — set the same env vars, point API calls at your API host |
-| API + Worker | **Railway** | Two services from one repo; `QUEUE_DRIVER=redis` + a Railway Redis instance |
-| Database | **Neon** | Pooled connection string for the app, direct endpoint for migrations |
-| Storage | **S3-compatible** | `STORAGE_DRIVER=s3` + bucket credentials for production media |
+| **Everything** | **Vercel** | App + API + publishing engine in one deployment — free tier, no credit card |
+| Scheduler trigger | **cron-job.org** (free) | Pings `GET /api/v1/cron/publish?key=CRON_SECRET` every minute to drive the publishing engine |
+| Database | **Neon** | Pooled connection string (`POSTGRES_URL`) |
+| Media | **Vercel Blob** | `STORAGE_DRIVER=vercel-blob` — public URLs, which Instagram publishing requires |
+
+Standalone deployments (NestJS API + worker on Railway/Render/Oracle) remain available via `mini-services/` + `docker-compose.yml` for teams that prefer split infrastructure.
 
 ## Security
 

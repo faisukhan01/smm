@@ -102,7 +102,7 @@ export function AnalyticsView({ session: _session }: { session: SessionPayload }
   async function exportCsv() {
     setExporting(true);
     try {
-      const res = await fetch(`/api/v1/analytics/export.csv?XTransformPort=3001&from=${from}&to=${to}`, {
+      const res = await fetch(`/api/v1/analytics/export.csv?from=${from}&to=${to}`, {
         credentials: 'include',
       });
       if (!res.ok) throw new Error(`Export failed (${res.status})`);
