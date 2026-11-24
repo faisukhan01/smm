@@ -200,19 +200,41 @@ export function isSupportedPlatform(value: string): value is Platform {
   return (PLATFORMS as readonly string[]).includes(value);
 }
 
+/**
+ * Facebook Login for Business (the only login product new-style Meta apps get
+ * through the use-cases flow) grants business permissions exclusively through
+ * CONFIGURATIONS: the authorize URL must carry `config_id`, otherwise Meta
+ * rejects the business-type scopes with "Invalid Scopes" in the dialog.
+ * Config IDs live in the Meta dashboard (Facebook Login for Business →
+ * Configurations) and are provisioned via env vars — optional overrides per
+ * platform, shared fallback for both (they are the same Meta app).
+ */
+const META_CONFIG_ID_ENV: Partial<Record<Platform, string>> = {
+  FACEBOOK: 'META_FB_LOGIN_CONFIG_ID',
+  INSTAGRAM: 'META_IG_LOGIN_CONFIG_ID',
+};
+
+function metaConfigIdQuery(platform: Platform): string {
+  const specific = META_CONFIG_ID_ENV[platform];
+  const raw = ((specific && process.env[specific]) || process.env.META_LOGIN_CONFIG_ID || '').trim();
+  return raw ? `&config_id=${encodeURIComponent(raw)}` : '';
+}
+
 export function buildAuthorizeUrl(platform: Platform, clientId: string, redirectUri: string, state: string): string {
   if (platform === 'FACEBOOK') {
     return (
       `https://www.facebook.com/v21.0/dialog/oauth?client_id=${encodeURIComponent(clientId)}` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}` +
-      `&scope=${encodeURIComponent('pages_show_list,pages_manage_posts,pages_read_engagement,pages_manage_engagement')}`
+      `&scope=${encodeURIComponent('pages_show_list,pages_manage_posts,pages_read_engagement,pages_manage_engagement')}` +
+      metaConfigIdQuery(platform)
     );
   }
   if (platform === 'INSTAGRAM') {
     return (
       `https://www.facebook.com/v21.0/dialog/oauth?client_id=${encodeURIComponent(clientId)}` +
       `&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}` +
-      `&scope=${encodeURIComponent('instagram_basic,instagram_content_publish,instagram_manage_comments,pages_show_list')}`
+      `&scope=${encodeURIComponent('instagram_basic,instagram_content_publish,instagram_manage_comments,pages_show_list')}` +
+      metaConfigIdQuery(platform)
     );
   }
   return (
