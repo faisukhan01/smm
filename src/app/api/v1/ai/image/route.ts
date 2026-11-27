@@ -10,7 +10,7 @@ import { badRequest } from '@/lib/server/api/errors';
 import { db } from '@/lib/db';
 import { assertAiCredits } from '@/lib/server/ai/plans';
 import { getZai, AI_MODEL } from '@/lib/server/ai/zai';
-import { saveUpload, extForMime, mediaUrl } from '@/lib/server/ai/uploads';
+import { saveUpload, extForMime } from '@/lib/server/ai/uploads';
 import { imageSchema } from '@smm/shared';
 
 export const runtime = 'nodejs';
@@ -38,14 +38,14 @@ export async function POST(req: Request) {
     if (!base64) throw badRequest('Image generation returned no data — try again');
 
     const buffer = Buffer.from(base64, 'base64');
-    const filename = await saveUpload(buffer, extForMime('image/png'));
+    const saved = await saveUpload(buffer, extForMime('image/png'));
     const media = await db.postMedia.create({
       data: {
         postId: null,
         type: 'IMAGE',
         provider: 'GENERATED',
-        url: mediaUrl(filename),
-        storageKey: filename,
+        url: saved.url,
+        storageKey: saved.storageKey,
         mimeType: 'image/png',
         size: buffer.length,
         aspectRatio: body.aspectRatio,

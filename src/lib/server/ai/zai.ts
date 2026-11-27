@@ -43,6 +43,23 @@ export async function getZai(): Promise<ZaiClient> {
  */
 export const AI_MODEL = process.env.AI_MODEL || 'glm-4.6';
 
+/**
+ * Guards against upstream error bodies: the OpenAI-compatible endpoint answers
+ * failures as { error: { code, message } } (no `choices`), which used to crash
+ * callers with a cryptic "Cannot read properties of undefined (reading '0')".
+ */
+export function assertCompletionOk(completion: unknown): void {
+  const body = completion as { choices?: unknown; error?: { message?: string; code?: string | number } } | null;
+  if (body && typeof body === 'object' && body.error) {
+    const { message, code } = body.error;
+    const detail = typeof message === 'string' ? message : 'unknown error';
+    throw new Error(`AI provider error${code !== undefined ? ` (code ${code})` : ''}: ${detail}`);
+  }
+  if (!body || !Array.isArray(body.choices) || body.choices.length === 0) {
+    throw new Error('AI provider returned no completion choices');
+  }
+}
+
 /** Runs a chat completion with the system prompt sent under the 'assistant' role. */
 export async function chatCompletion(zai: ZaiClient, system: string, user: string): Promise<string> {
   const completion = await zai.chat.completions.create({
@@ -52,6 +69,7 @@ export async function chatCompletion(zai: ZaiClient, system: string, user: strin
     ],
     thinking: { type: 'disabled' },
   });
+  assertCompletionOk(completion);
   return completion.choices[0]?.message?.content ?? '';
 }
 
@@ -65,6 +83,7 @@ export async function chatCompletionWithHistory(
     messages: [{ role: 'assistant', content: system }, ...history],
     thinking: { type: 'disabled' },
   });
+  assertCompletionOk(completion);
   return completion.choices[0]?.message?.content ?? '';
 }
 

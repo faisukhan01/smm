@@ -1,37 +1,30 @@
 /**
- * Local media storage — mirrors the former NestJS API's common/uploads.ts.
- * Generated images are persisted under UPLOAD_DIR and served by
- * src/app/api/media/[name]/route.ts under /api/media/<filename>.
+ * AI-generated media storage — delegates to the shared storage abstraction
+ * (src/lib/server/storage.ts) so generated images are persisted by whichever
+ * STORAGE_DRIVER is active: 'vercel-blob' in production (survives across
+ * serverless invocations and is fetchable by social platforms) and the local
+ * ./uploads driver in development — identical behavior to the original
+ * implementation in both cases.
  */
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
 
-export function uploadDir(): string {
-  return process.env.UPLOAD_DIR || './uploads';
+export { extForMime } from '@/lib/server/storage';
+
+export interface SavedAiUpload {
+  /** Public URL to store on the media row (what clients will fetch). */
+  url: string;
+  /** Driver-native key; passes through to deleteUpload() later. */
+  storageKey: string;
 }
 
-/** Public URL under which the app serves stored media files. */
-export function mediaUrl(filename: string): string {
-  return `/api/media/${filename}`;
-}
-
-const EXT_BY_MIME: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-  'video/mp4': 'mp4',
-};
-
-export function extForMime(mimeType: string): string {
-  return EXT_BY_MIME[mimeType] ?? 'bin';
-}
-
-/** Persists a decoded buffer in the uploads dir; returns the generated filename. */
-export async function saveUpload(buffer: Buffer, ext: string): Promise<string> {
-  const dir = resolve(uploadDir());
-  await mkdir(dir, { recursive: true });
-  const filename = `${randomUUID().replace(/-/g, '')}.${ext}`;
-  await writeFile(join(dir, filename), buffer);
-  return filename;
+/** Persists a decoded buffer via the shared storage layer; returns URL + key. */
+export async function saveUpload(buffer: Buffer, ext: string): Promise<SavedAiUpload> {
+  const { saveUpload: sharedSave, extForMime } = await import('@/lib/server/storage');
+  const mime = Object.entries({ png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp', mp4: 'video/mp4' }).find(
+    ([e]) => e === ext,
+  )?.[1];
+  const contentType = mime ?? 'application/octet-stream';
+  const fileName = `${randomUUID().replace(/-/g, '')}.${extForMime(contentType)}`;
+  const saved = await sharedSave(fileName, new Uint8Array(buffer), contentType);
+  return { url: saved.url, storageKey: saved.storageKey };
 }
