@@ -37,11 +37,21 @@ export async function getZai(): Promise<ZaiClient> {
 }
 
 /**
- * Chat model. Defaults to GLM-4.6; override with AI_MODEL to target any
- * OpenAI-compatible provider (e.g. AI_MODEL=gemini-2.0-flash with
+ * Chat model. Defaults to glm-4.5-flash — Z.ai's free-tier model, so caption
+ * generation works on any key even before any balance/resource package is
+ * purchased (glm-4.6 and other paid models answer error 1113 on a
+ * zero-balance key). Override with AI_MODEL to target any OpenAI-compatible
+ * model (e.g. AI_MODEL=gemini-2.0-flash with
  * ZAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai).
  */
-export const AI_MODEL = process.env.AI_MODEL || 'glm-4.6';
+export const AI_MODEL = process.env.AI_MODEL || 'glm-4.5-flash';
+
+/**
+ * Image model. The OpenAI-compatible images endpoint requires an explicit
+ * model (it 500s without one) and currently accepts cogview-4-250304;
+ * override with ZAI_IMAGE_MODEL.
+ */
+export const AI_IMAGE_MODEL = process.env.ZAI_IMAGE_MODEL || 'cogview-4-250304';
 
 /**
  * Guards against upstream error bodies: the OpenAI-compatible endpoint answers
@@ -63,6 +73,7 @@ export function assertCompletionOk(completion: unknown): void {
 /** Runs a chat completion with the system prompt sent under the 'assistant' role. */
 export async function chatCompletion(zai: ZaiClient, system: string, user: string): Promise<string> {
   const completion = await zai.chat.completions.create({
+    model: AI_MODEL,
     messages: [
       { role: 'assistant', content: system },
       { role: 'user', content: user },
@@ -80,11 +91,57 @@ export async function chatCompletionWithHistory(
   history: { role: 'user' | 'assistant'; content: string }[],
 ): Promise<string> {
   const completion = await zai.chat.completions.create({
+    model: AI_MODEL,
     messages: [{ role: 'assistant', content: system }, ...history],
     thinking: { type: 'disabled' },
   });
   assertCompletionOk(completion);
   return completion.choices[0]?.message?.content ?? '';
+}
+
+/**
+ * Generates an image and returns the raw image bytes.
+ *
+ * Production path (ZAI_API_KEY set) calls the OpenAI-compatible images
+ * endpoint directly with an explicit model: the SDK's images client neither
+ * sends a model (the endpoint answers HTTP 500 without one) nor tolerates
+ * error bodies (it crashes on `.data.map(...)`), and it hides upstream
+ * messages like error 1113 "Insufficient balance". Sandbox path (no env key)
+ * keeps using the config-file SDK client.
+ */
+export async function generateImage(prompt: string, size: string): Promise<Buffer> {
+  const apiKey = process.env.ZAI_API_KEY;
+  if (!apiKey) {
+    const zai = await getZai();
+    const response = await zai.images.generations.create({ prompt, size: size as '1024x1024' });
+    const base64 = response.data?.[0]?.base64;
+    if (!base64) throw new Error('Image generation returned no data — try again');
+    return Buffer.from(base64, 'base64');
+  }
+
+  const base = (process.env.ZAI_BASE_URL || 'https://api.z.ai/api/paas/v4').replace(/\/+$/, '');
+  const res = await fetch(`${base}/images/generations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: AI_IMAGE_MODEL, prompt, size }),
+    signal: AbortSignal.timeout(110_000),
+  });
+  const json = (await res.json().catch(() => null)) as
+    | { data?: Array<{ url?: string; b64_json?: string }>; error?: { code?: string | number; message?: string } }
+    | null;
+  if (json?.error) {
+    const { message, code } = json.error;
+    throw new Error(`AI provider error${code !== undefined ? ` (code ${code})` : ''}: ${message ?? 'unknown error'}`);
+  }
+  if (!res.ok) throw new Error(`AI provider image request failed (HTTP ${res.status})`);
+  const item = json?.data?.[0];
+  if (item?.b64_json) return Buffer.from(item.b64_json, 'base64');
+  if (item?.url) {
+    const img = await fetch(item.url, { signal: AbortSignal.timeout(60_000) });
+    if (!img.ok) throw new Error(`Could not download the generated image (HTTP ${img.status})`);
+    return Buffer.from(await img.arrayBuffer());
+  }
+  throw new Error('Image generation returned no image data');
 }
 
 /**

@@ -1,15 +1,14 @@
 /**
  * POST /api/v1/ai/image — AI image generation.
  * Port of the former NestJS AiController.image() — identical wire contract.
- * Generates via the z-ai-web-dev-sdk, stores the PNG through the local media
- * storage driver (served under /api/media/<filename>), and records 2 credits.
+ * Generates via the shared AI layer (explicit image model + honest upstream
+ * errors), stores the PNG through the storage driver, and records 2 credits.
  */
 import { parseBody, ok, handleError } from '@/lib/server/api/handler';
 import { requireAuth, requirePermission } from '@/lib/server/api/context';
-import { badRequest } from '@/lib/server/api/errors';
 import { db } from '@/lib/db';
 import { assertAiCredits } from '@/lib/server/ai/plans';
-import { getZai, AI_MODEL } from '@/lib/server/ai/zai';
+import { generateImage, AI_IMAGE_MODEL } from '@/lib/server/ai/zai';
 import { saveUpload, extForMime } from '@/lib/server/ai/uploads';
 import { imageSchema } from '@smm/shared';
 
@@ -31,13 +30,8 @@ export async function POST(req: Request) {
     const body = await parseBody(req, imageSchema);
     await assertAiCredits(auth.workspaceId, 2);
 
-    const zai = await getZai();
     const size = IMAGE_SIZES[body.aspectRatio] ?? '1024x1024';
-    const response = await zai.images.generations.create({ prompt: body.prompt, size: size as '1024x1024' });
-    const base64 = response.data?.[0]?.base64;
-    if (!base64) throw badRequest('Image generation returned no data — try again');
-
-    const buffer = Buffer.from(base64, 'base64');
+    const buffer = await generateImage(body.prompt, size);
     const saved = await saveUpload(buffer, extForMime('image/png'));
     const media = await db.postMedia.create({
       data: {
@@ -52,7 +46,7 @@ export async function POST(req: Request) {
       },
     });
     await db.aiUsage.create({
-      data: { workspaceId: auth.workspaceId, userId: auth.userId, kind: 'IMAGE', credits: 2, model: AI_MODEL, meta: { aspectRatio: body.aspectRatio } },
+      data: { workspaceId: auth.workspaceId, userId: auth.userId, kind: 'IMAGE', credits: 2, model: AI_IMAGE_MODEL, meta: { aspectRatio: body.aspectRatio } },
     });
     return ok({ mediaId: media.id, url: media.url });
   } catch (err) {
