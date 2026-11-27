@@ -10,18 +10,40 @@
  * The page id comes from SocialAccount.externalId. Tokens are decrypted by the
  * processor and passed in via ctx.token. Authentication failures surface as
  * honest permanent failures — the processor marks the account EXPIRED.
+ *
+ * Page token resolution: Meta's current Pages experience rejects /{page-id}/
+ * feed POSTs made with a FB Login for Business USER token (HTTP 403 #200
+ * "…as an admin with sufficient administrative permission") even when the
+ * token carries pages_manage_posts. Publishing therefore exchanges the stored
+ * user token for a PAGE access token (GET /{page-id}?fields=access_token,
+ * granted via pages_read_engagement/pages_show_list) before every publish;
+ * on exchange failure it degrades honestly to the stored token.
  */
 import { failureFromHttp, firstImage, firstVideo, httpRequest, pickExternalId, type Publisher, type PublishResult } from './types';
 
 const GRAPH_API_BASE = 'https://graph.facebook.com/v21.0';
+
+async function resolvePageToken(userToken: string, pageId: string): Promise<string> {
+  const res = await httpRequest(
+    `${GRAPH_API_BASE}/${encodeURIComponent(pageId)}?fields=access_token&access_token=${encodeURIComponent(userToken)}`,
+    { method: 'GET' },
+  );
+  const token =
+    res.ok && res.json && typeof res.json === 'object'
+      ? (res.json as Record<string, unknown>)['access_token']
+      : null;
+  return typeof token === 'string' && token.length > 0 ? token : userToken;
+}
 
 export const facebookPublisher: Publisher = async (ctx): Promise<PublishResult> => {
   const pageId = ctx.account.externalId;
   const image = firstImage(ctx.media);
   const video = firstVideo(ctx.media);
 
+  const pageToken = await resolvePageToken(ctx.token, pageId);
+
   let endpoint: string;
-  const form = new URLSearchParams({ access_token: ctx.token });
+  const form = new URLSearchParams({ access_token: pageToken });
 
   if (image) {
     endpoint = `${GRAPH_API_BASE}/${pageId}/photos`;
