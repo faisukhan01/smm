@@ -1,9 +1,9 @@
 /**
  * POST /api/v1/ai/image — AI image generation.
  * Port of the former NestJS AiController.image() — identical wire contract.
- * Generates via the shared AI layer (paid Z.ai model with a free keyless
- * fallback), stores the result through the storage driver, and records 2
- * credits.
+ * Generates via the shared AI layer (free Gemini when GEMINI_API_KEY is set,
+ * then paid Z.ai, then a free keyless fallback), stores the result through the
+ * storage driver, and records 2 credits.
  */
 import { parseBody, ok, handleError } from '@/lib/server/api/handler';
 import { requireAuth, requirePermission } from '@/lib/server/api/context';
