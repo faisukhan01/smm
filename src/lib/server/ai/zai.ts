@@ -100,25 +100,58 @@ export async function chatCompletionWithHistory(
 }
 
 /**
- * Generates an image and returns the raw image bytes.
+ * Generates an image and returns the raw bytes plus the provider model that
+ * produced them.
  *
- * Production path (ZAI_API_KEY set) calls the OpenAI-compatible images
- * endpoint directly with an explicit model: the SDK's images client neither
- * sends a model (the endpoint answers HTTP 500 without one) nor tolerates
- * error bodies (it crashes on `.data.map(...)`), and it hides upstream
- * messages like error 1113 "Insufficient balance". Sandbox path (no env key)
- * keeps using the config-file SDK client.
+ * Order of attempts:
+ * 1. Z.ai OpenAI-compatible images endpoint (when ZAI_API_KEY is set) with an
+ *    explicit model — the SDK's images client neither sends a model (the
+ *    endpoint answers HTTP 500 without one) nor tolerates error bodies (it
+ *    crashes on `.data.map(...)`), and it hides upstream messages like error
+ *    1113 "Insufficient balance".
+ * 2. Pollinations.ai (free, keyless community image API) — used as an
+ *    automatic fallback so Studio image generation keeps working on keys
+ *    without balance. Sandbox path (no env key) uses the config-file SDK
+ *    client first, same as before.
  */
-export async function generateImage(prompt: string, size: string): Promise<Buffer> {
+export async function generateImage(
+  prompt: string,
+  size: string,
+): Promise<{ buffer: Buffer; model: string; mimeType: string }> {
   const apiKey = process.env.ZAI_API_KEY;
   if (!apiKey) {
     const zai = await getZai();
     const response = await zai.images.generations.create({ prompt, size: size as '1024x1024' });
     const base64 = response.data?.[0]?.base64;
-    if (!base64) throw new Error('Image generation returned no data — try again');
-    return Buffer.from(base64, 'base64');
+    if (base64) {
+      return { buffer: Buffer.from(base64, 'base64'), model: 'sdk', mimeType: 'image/png' };
+    }
+  } else {
+    try {
+      return await generateImageViaZai(apiKey, prompt, size);
+    } catch (err) {
+      // Remember the Z.ai failure; Pollinations below is the fallback.
+      const zaiError = err instanceof Error ? err.message : String(err);
+      try {
+        return await generateImageViaPollinations(prompt, size, zaiError);
+      } catch (pollinationsError) {
+        throw new Error(
+          `${zaiError}. Free fallback also failed: ${
+            pollinationsError instanceof Error ? pollinationsError.message : String(pollinationsError)
+          }`,
+        );
+      }
+    }
   }
+  return generateImageViaPollinations(prompt, size, 'SDK returned no image data');
+}
 
+/** Z.ai images endpoint with explicit model + honest upstream errors. */
+async function generateImageViaZai(
+  apiKey: string,
+  prompt: string,
+  size: string,
+): Promise<{ buffer: Buffer; model: string; mimeType: string }> {
   const base = (process.env.ZAI_BASE_URL || 'https://api.z.ai/api/paas/v4').replace(/\/+$/, '');
   const res = await fetch(`${base}/images/generations`, {
     method: 'POST',
@@ -135,13 +168,43 @@ export async function generateImage(prompt: string, size: string): Promise<Buffe
   }
   if (!res.ok) throw new Error(`AI provider image request failed (HTTP ${res.status})`);
   const item = json?.data?.[0];
-  if (item?.b64_json) return Buffer.from(item.b64_json, 'base64');
+  if (item?.b64_json) return { buffer: Buffer.from(item.b64_json, 'base64'), model: AI_IMAGE_MODEL, mimeType: 'image/png' };
   if (item?.url) {
     const img = await fetch(item.url, { signal: AbortSignal.timeout(60_000) });
     if (!img.ok) throw new Error(`Could not download the generated image (HTTP ${img.status})`);
-    return Buffer.from(await img.arrayBuffer());
+    const mime = img.headers.get('content-type') || 'image/png';
+    return { buffer: Buffer.from(await img.arrayBuffer()), model: AI_IMAGE_MODEL, mimeType: mime };
   }
   throw new Error('Image generation returned no image data');
+}
+
+/**
+ * Pollinations.ai — free keyless image generation. Returns JPEG bytes.
+ * The optional zaiError is folded into the thrown message when this fallback
+ * also fails, so users still see why the primary provider was skipped.
+ */
+async function generateImageViaPollinations(
+  prompt: string,
+  size: string,
+  zaiError?: string,
+): Promise<{ buffer: Buffer; model: string; mimeType: string }> {
+  const [w, h] = size.split('x').map((n) => Number.parseInt(n, 10));
+  const width = Number.isFinite(w) && w > 0 ? w : 1024;
+  const height = Number.isFinite(h) && h > 0 ? h : 1024;
+  const seed = Math.floor(Math.random() * 1_000_000);
+  const url =
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.slice(0, 900))}` +
+    `?width=${width}&height=${height}&nologo=true&seed=${seed}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(110_000) });
+  if (!res.ok) {
+    throw new Error(
+      `Pollinations HTTP ${res.status}${zaiError ? ` (primary provider: ${zaiError})` : ''}`,
+    );
+  }
+  const mime = res.headers.get('content-type') || 'image/jpeg';
+  const buffer = Buffer.from(await res.arrayBuffer());
+  if (!buffer.length) throw new Error('Pollinations returned an empty image');
+  return { buffer, model: 'pollinations-free', mimeType: mime.startsWith('image/') ? mime : 'image/jpeg' };
 }
 
 /**
